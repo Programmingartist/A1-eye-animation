@@ -1,0 +1,27 @@
+# Local tooling and caches
+.pnpm-store/
+.tooling/
+studio/
+
+# Generated verification and export samples
+checks/
+examples/
+
+# Previous reference experiments
+preview.png
+reference.png
+make_samples.py
+verify.cjs
+
+# Reproducible intermediate forest layers
+assets/forest-backdrop.png
+assets/forest-glass.png
+assets/forest-source.png
+assets/forest-wing-*.png
+assets/forest-butterfly-*.png
+assets/forest-flower.png
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.swp

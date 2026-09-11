@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>双眼动画</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<main id="stage" aria-label="双眼动画"><canvas id="left" width="360" height="360" aria-label="左眼"></canvas><canvas id="right" width="360" height="360" aria-label="右眼"></canvas></main>
+<button id="show" aria-label="显示控制面板" title="设置 · H">⚙</button>
+<section id="panel" aria-label="动画控制">
+ <div class="top"><span>双眼动画 <small>360 × 360 / 每眼</small></span><button id="hide" title="隐藏面板 · H">收起 ↘</button></div>
+ <div class="modes forest-effects" role="group" aria-label="森林精灵常用动作"><button data-mode="forest" class="active">森林待机</button><button data-mode="forest-blink">自然眨眼</button><button data-mode="forest-look">左右观察</button><button data-mode="forest-surprise">惊喜聚焦</button><button data-mode="forest-sleepy">困倦眯眼</button><button data-mode="forest-tremor">瞳孔震颤</button></div>
+ <div class="modes reference" role="group" aria-label="参考图八种表情"><button data-mode="heart">爱心眼</button><button data-mode="happy">开心笑眼</button><button data-mode="angry">生气</button><button data-mode="hot">太热了</button><button data-mode="sleepy">困倦</button><button data-mode="superhappy">超级开心</button><button data-mode="cry">委屈流泪</button><button data-mode="cross">呆萌对眼</button></div>
+ <div class="modes secondary" role="group" aria-label="基础动作"><button data-mode="idle">自然待机</button><button data-mode="curious">好奇张望</button><button data-mode="surprise">惊喜睁眼</button><button data-mode="playful">俏皮眨眼</button></div>
+ <div class="row"><button id="blink">眨一下</button><button id="pause">暂停</button><button id="fullscreen">纯眼睛全屏</button><label class="follow"><input id="follow" type="checkbox" checked> 跟随指针</label><label>虹膜 <select id="color"><option value="aqua">蓝青</option><option value="amber">琥珀</option><option value="violet">紫罗兰</option></select></label></div>
+ <div class="export"><label>时长 <select id="duration"><option value="4">4 秒</option><option value="8" selected>8 秒</option><option value="12">12 秒</option></select></label><label>帧率 <select id="fps"><option>18</option><option>24</option><option>30</option><option selected>60</option></select></label><label>布局 <select id="layout"><option value="separate">左右独立</option><option value="pair">双眼并排</option></select></label><label>格式 <select id="format"><option value="sequence">PNG 序列帧 · ZIP</option><option value="webm">WebM 视频</option><option value="sheet">PNG 精灵图 · ZIP</option><option value="still">当前帧 · PNG ZIP</option></select></label><button id="export">导出</button><button id="cancel" hidden>取消</button></div>
+ <div class="foot"><span id="status" role="status" aria-live="polite">移到眼睛区域试试 · 空格暂停 · H 隐藏面板</span><span>圆外纯黑 · 无边框</span></div>
+</section>
+<script src="forest-assets.js"></script><script src="eyes.js"></script><script src="app.js"></script>
+</body></html>
