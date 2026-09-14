@@ -1,17 +1,68 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>双眼动画</title><link rel="stylesheet" href="style.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Cache-Control" content="no-store, max-age=0, must-revalidate"><title>双眼动画</title><link rel="stylesheet" href="style.css?v=20260914"></head>
 <body>
 <main id="stage" aria-label="双眼动画"><canvas id="left" width="360" height="360" aria-label="左眼"></canvas><canvas id="right" width="360" height="360" aria-label="右眼"></canvas></main>
+<section id="model-stage" aria-label="机器人搭载效果">
+ <div class="model-shell">
+  <img class="model-reference" src="assets/plush_robot_reference.png" alt="白色毛绒机器人">
+  <div class="model-eye model-eye-left"><canvas id="model-left" width="360" height="360" aria-label="模型左眼"></canvas></div>
+  <div class="model-eye model-eye-right"><canvas id="model-right" width="360" height="360" aria-label="模型右眼"></canvas></div>
+ </div>
+</section>
 <button id="show" aria-label="显示控制面板" title="设置 · H">⚙</button>
 <section id="panel" aria-label="动画控制">
  <div class="top"><span>双眼动画 <small>360 × 360 / 每眼</small></span><button id="hide" title="隐藏面板 · H">收起 ↘</button></div>
  <div class="modes forest-effects" role="group" aria-label="森林精灵常用动作"><button data-mode="forest" class="active">森林待机</button><button data-mode="forest-blink">自然眨眼</button><button data-mode="forest-look">左右观察</button><button data-mode="forest-surprise">惊喜聚焦</button><button data-mode="forest-sleepy">困倦眯眼</button><button data-mode="forest-tremor">瞳孔震颤</button></div>
  <div class="modes reference" role="group" aria-label="参考图八种表情"><button data-mode="heart">爱心眼</button><button data-mode="happy">开心笑眼</button><button data-mode="angry">生气</button><button data-mode="hot">太热了</button><button data-mode="sleepy">困倦</button><button data-mode="superhappy">超级开心</button><button data-mode="cry">委屈流泪</button><button data-mode="cross">呆萌对眼</button></div>
  <div class="modes secondary" role="group" aria-label="基础动作"><button data-mode="idle">自然待机</button><button data-mode="curious">好奇张望</button><button data-mode="surprise">惊喜睁眼</button><button data-mode="playful">俏皮眨眼</button></div>
- <div class="row"><button id="blink">眨一下</button><button id="pause">暂停</button><button id="fullscreen">纯眼睛全屏</button><label class="follow"><input id="follow" type="checkbox" checked> 跟随指针</label><label>虹膜 <select id="color"><option value="aqua">蓝青</option><option value="amber">琥珀</option><option value="violet">紫罗兰</option></select></label></div>
+ <div class="row"><button id="blink">眨一下</button><button id="pause">暂停</button><button id="fullscreen">纯眼睛全屏</button><button id="show-model">机器人效果 ↓</button><label class="follow"><input id="follow" type="checkbox" checked> 跟随指针</label><label>玻璃配色 <select id="color"><option value="aqua">蓝青</option><option value="amber">琥珀</option><option value="violet">紫罗兰</option><option value="caramel">浅金焦糖</option><option value="smoky">茶晶</option><option value="moon">月光蓝</option><option value="mint">薄荷玻璃</option><option value="rose">玫瑰烟晶</option></select></label><label>方案 <select id="profile"><option value="forest">森林玻璃</option><option value="focus">清醒聚焦</option><option value="night">夜行观察</option><option value="custom">手动调整</option></select></label></div>
+ <div class="tuning" aria-label="眼睛造型调整">
+  <label>眼形 <select id="shape-preset"><option value="shellGem">面壳宝石</option><option value="softWide">柔和横椭圆</option><option value="softOval">柔和竖椭圆</option><option value="almond">软杏仁</option><option value="circle">接近正圆</option><option value="custom">自定义</option></select></label>
+  <label>整体大小 <input id="eye-size" type="range" min="72" max="125" value="100" step="1"><output id="eye-size-value">100%</output></label>
+  <label>眼宽 <input id="eye-width" type="range" min="68" max="118" value="100" step="1"><output id="eye-width-value">100%</output></label>
+  <label>眼高 <input id="eye-height" type="range" min="68" max="125" value="100" step="1"><output id="eye-height-value">100%</output></label>
+  <label>圆润 <input id="roundness" type="range" min="35" max="100" value="84" step="1"><output id="roundness-value">84%</output></label>
+  <label>柔和边缘 <input id="rim" type="range" min="1" max="12" value="3" step="1"><output id="rim-value">3</output></label>
+  <label>双眼距 <input id="eye-gap" type="range" min="45" max="150" value="100" step="1"><output id="eye-gap-value">100%</output></label>
+  <label>眼睛倾斜 <input id="eye-tilt" type="range" min="-12" max="12" value="0" step="1"><output id="eye-tilt-value">0</output></label>
+  <label>瞳孔大小 <input id="pupil-size" type="range" min="55" max="145" value="100" step="1"><output id="pupil-size-value">100%</output></label>
+  <label>虹膜大小 <input id="iris-size" type="range" min="70" max="120" value="100" step="1"><output id="iris-size-value">100%</output></label>
+  <label>虹膜椭圆 <input id="iris-oval" type="range" min="68" max="132" value="100" step="1"><output id="iris-oval-value">100%</output></label>
+  <label>瞳孔椭圆 <input id="pupil-oval" type="range" min="65" max="140" value="100" step="1"><output id="pupil-oval-value">100%</output></label>
+  <label>上半部颜色 <input id="color-top" type="color" value="#06324b"></label>
+  <label>下半部颜色 <input id="color-bottom" type="color" value="#52e0cf"></label>
+  <label>纹理强度 <input id="texture" type="range" min="0" max="100" value="76" step="1"><output id="texture-value">76%</output></label>
+  <label>高光强度 <input id="shine" type="range" min="0" max="120" value="98" step="1"><output id="shine-value">98%</output></label>
+  <label>虹膜纹理 <select id="pattern"><option value="silk">柔和金丝</option><option value="cloud">云雾</option><option value="ripple">水波</option><option value="crystal">晶点</option></select></label>
+  <label>瞳形 <select id="pupil-style"><option value="round">圆形</option><option value="oval">柔椭圆</option><option value="slit">竖瞳</option></select></label>
+ </div>
+ <div class="tuning advanced" aria-label="注视与眼睑调整">
+  <label>行为 <select id="behavior"><option value="gentle">温柔待机</option><option value="curious">抬眼好奇</option><option value="shy">害羞侧看</option><option value="happy">开心弯眼</option><option value="surprise">惊讶放大</option><option value="sleepy">困倦眨眼</option><option value="manual">手动注视</option></select></label>
+  <label>看向左右 <input id="gaze-x" type="range" min="-100" max="100" value="0" step="1"><output id="gaze-x-value">0</output></label>
+  <label>看向上下 <input id="gaze-y" type="range" min="-100" max="100" value="0" step="1"><output id="gaze-y-value">0</output></label>
+  <label>上眼睑 <input id="upper-lid" type="range" min="0" max="70" value="0" step="1"><output id="upper-lid-value">0%</output></label>
+  <label>下眼睑 <input id="lower-lid" type="range" min="0" max="55" value="0" step="1"><output id="lower-lid-value">0%</output></label>
+  <label>眼神微动 <input id="micro" type="range" min="0" max="100" value="28" step="1"><output id="micro-value">28%</output></label>
+  <label>表情强度 <input id="expression" type="range" min="0" max="100" value="72" step="1"><output id="expression-value">72%</output></label>
+  <label><input id="auto-gaze" type="checkbox" checked> 自动转向</label>
+  <label><input id="sync-eyes" type="checkbox" checked> 双眼同步</label>
+ </div>
+ <div class="tuning advanced" aria-label="动态细节调整">
+  <label>眼睛呼吸 <input id="eye-pulse" type="range" min="0" max="100" value="28" step="1"><output id="eye-pulse-value">28%</output></label>
+  <label>瞳孔呼吸 <input id="pupil-pulse" type="range" min="0" max="100" value="54" step="1"><output id="pupil-pulse-value">54%</output></label>
+  <label>高光漂移 <input id="highlight-motion" type="range" min="0" max="100" value="52" step="1"><output id="highlight-motion-value">52%</output></label>
+  <label>纹理流动 <input id="texture-flow" type="range" min="0" max="100" value="48" step="1"><output id="texture-flow-value">48%</output></label>
+  <label>播放速度 <input id="motion-speed" type="range" min="30" max="190" value="100" step="1"><output id="motion-speed-value">100%</output></label>
+  <label>眨眼间隔 <input id="blink-every" type="range" min="2.5" max="12" value="5.5" step="0.5"><output id="blink-every-value">5.5s</output></label>
+  <label>眨眼幅度 <input id="blink-depth" type="range" min="0" max="100" value="100" step="1"><output id="blink-depth-value">100%</output></label>
+  <label>眨眼错位 <input id="blink-offset" type="range" min="0" max="100" value="9" step="1"><output id="blink-offset-value">9%</output></label>
+  <label><input id="auto-blink" type="checkbox" checked> 自动眨眼</label>
+  <label><input id="ambient" type="checkbox" checked> 环境呼吸光</label>
+ </div>
+ <div class="actions" aria-label="配置操作"><button id="reset-settings">恢复森林玻璃</button><button id="variation">生成温和变化</button><button id="save-settings">下载参数 JSON</button><button id="load-settings">导入参数 JSON</button><input id="settings-file" type="file" accept="application/json,.json" hidden></div>
  <div class="export"><label>时长 <select id="duration"><option value="4">4 秒</option><option value="8" selected>8 秒</option><option value="12">12 秒</option></select></label><label>帧率 <select id="fps"><option>18</option><option>24</option><option>30</option><option selected>60</option></select></label><label>布局 <select id="layout"><option value="separate">左右独立</option><option value="pair">双眼并排</option></select></label><label>格式 <select id="format"><option value="sequence">PNG 序列帧 · ZIP</option><option value="webm">WebM 视频</option><option value="sheet">PNG 精灵图 · ZIP</option><option value="still">当前帧 · PNG ZIP</option></select></label><button id="export">导出</button><button id="cancel" hidden>取消</button></div>
  <div class="foot"><span id="status" role="status" aria-live="polite">移到眼睛区域试试 · 空格暂停 · H 隐藏面板</span><span>圆外纯黑 · 无边框</span></div>
 </section>
-<script src="forest-assets.js"></script><script src="eyes.js"></script><script src="app.js"></script>
+<script src="forest-assets.js?v=20260914"></script><script src="eyes.js?v=20260914"></script><script src="app.js?v=20260914"></script>
 </body></html>

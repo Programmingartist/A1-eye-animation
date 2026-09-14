@@ -4,7 +4,20 @@
  'use strict';
  const TAU=Math.PI*2,clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
  const smooth=x=>{x=clamp(x);return x*x*x*(x*(x*6-15)+10)},mix=(a,b,t)=>a+(b-a)*t;
- const palettes={aqua:[190,207],amber:[35,24],violet:[270,232]},textures=new Map();
+ const palettes={aqua:[190,207],amber:[35,24],violet:[270,232],caramel:[39,30],smoky:[14,2],moon:[205,190],mint:[160,145],rose:[345,320]},textures=new Map();
+ const paletteColors={
+  aqua:{top:'#06324b',bottom:'#52e0cf'},amber:{top:'#3d170d',bottom:'#f2a64d'},violet:{top:'#21133e',bottom:'#bd91f2'},
+  caramel:{top:'#4a2612',bottom:'#e3a45e'},smoky:{top:'#35191a',bottom:'#b97058'},moon:{top:'#10294b',bottom:'#54b9d4'},
+  mint:{top:'#123a35',bottom:'#58c49a'},rose:{top:'#4a2030',bottom:'#dc8f91'}
+ };
+ function parseColor(value,fallback){
+  if(typeof value!=='string')return fallback;
+  const match=value.trim().match(/^#?([\da-f]{6})$/i);if(!match)return fallback;
+  const n=parseInt(match[1],16);return[(n>>16)&255,(n>>8)&255,n&255];
+ }
+ const colorCss=(v,a=1)=>`rgba(${v[0]},${v[1]},${v[2]},${a})`;
+ const colorMix=(a,b,t)=>a.map((v,i)=>Math.round(v+(b[i]-v)*t));
+ const colorShade=(v,t)=>colorMix(v,[0,0,0],t);
  const forestFiles=['glass','backdrop'];
  const forestAssets=Object.fromEntries(forestFiles.map(name=>{const image=new Image();image.src=window.ForestAssetData?.[name]||`assets/forest-${name}.png`;return[name,image]}));
  const forestReady=Promise.all(Object.values(forestAssets).map(image=>image.complete&&image.naturalWidth?Promise.resolve():new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error(`无法加载森林图层：${image.src}`))})));
@@ -35,14 +48,45 @@
   disk(c,0,0,312,radial(c,0,0,312,[[0,'#0000'],[.79,'#0000'],[.93,'#03456222'],[.985,'#063449d9'],[1,'#102c3e']]));
   textures.set(color,can);return can;
  }
- function blink(t,start,amount=1,slow=1){const x=(t-start)/slow;if(x<0||x>.43)return 0;if(x<.105)return smooth(x/.105)*amount;if(x<.135)return amount;return(1-smooth((x-.135)/.295))*amount}
- function forestBlink(t,start,amount=1,slow=1){const x=(t-start)/slow;if(x<0||x>.58)return 0;if(x<.15)return smooth(x/.15)*amount;if(x<.21)return amount;if(x<.3)return mix(amount,amount*.9,smooth((x-.21)/.09));return(1-smooth((x-.3)/.28))*amount}
+  function blink(t,start,amount=1,slow=1){
+  const x=(t-start)/slow;if(x<0||x>.14)return 0;
+  // The upper lid reaches the bottom edge, then returns immediately. There is
+  // no held center-contact frame where two lids could read as a flat line.
+  if(x<.055)return smooth(x/.055)*amount;
+  const release=smooth((x-.055)/.085);
+   return Math.pow(1-release,1.28)*amount;
+  }
+  function scheduledBlink(t,every=5.5,offset=0,depth=1){
+   const period=Math.max(1.8,Number(every)||5.5),phase=((t+offset)%period+period)%period;
+   // Short, asymmetric closure: 55 ms down, immediate rebound, no held seam.
+   const start=period*.62,x=phase-start;
+   if(x<0||x>.19)return 0;
+   const value=x<.055?smooth(x/.055):Math.pow(1-smooth((x-.055)/.135),1.22);
+   return clamp(value)*clamp(depth);
+  }
+ function forestBlink(t,start,amount=1,slow=1){const x=(t-start)/slow;if(x<0||x>.17)return 0;if(x<.06)return smooth(x/.06)*amount;return(1-smooth((x-.06)/.11))*amount}
+ function noise(t,seed){
+  const i=Math.floor(t),f=t-i,hash=n=>{const x=Math.sin((n+seed*31.7)*127.1+seed*19.19)*43758.5453;return x-Math.floor(x)};
+  return mix(hash(i)*2-1,hash(i+1)*2-1,smooth(f));
+ }
+ function livingPupil(t,side){
+  // Non-periodic, smoothly interpolated fixation noise prevents a visible
+  // sine-wave loop while keeping the exported animation deterministic.
+  const warpX=t*8.4+noise(t*1.17,17)*.8,warpY=t*9.7+noise(t*1.31,29)*.75;
+  return {
+   x:.18*noise(t*1.1,3)+.33*noise(warpX,7)+.16*noise(t*15.1+noise(t*1.9,41),53)+.055*noise(t*12.7,side+79),
+   y:.15*noise(t*1.3,11)+.29*noise(warpY,23)+.14*noise(t*16.4+noise(t*2.2,67),97)+.05*noise(t*13.4,side+113),
+   scale:.005*noise(t*3.6,131)+.003*noise(t*7.1+noise(t*.9,149),163)
+  };
+ }
  function gaze(t,points){let a=points[0];for(let i=1;i<points.length;i++){const b=points[i];if(t<b[0]){const distance=Math.hypot(b[1]-a[1],b[2]-a[2]),u=clamp((t-a[0])/Math.min(.62+distance*.003,b[0]-a[0])),k=smooth(u);
    // A small curved route and a soft follow-through replace mechanical straight slides.
    const lift=Math.sin(Math.PI*u)**2,settle=Math.sin(TAU*u)*lift*.025;
    return[mix(a[1],b[1],k+settle),mix(a[2],b[2],k)-Math.min(3,distance*.055)*lift]}a=b}return[a[1],a[2]]}
  function state(time,mode='idle',side=0){
-  const t=((time%12)+12)%12,bt=t-side*.014;
+  // Binocular spontaneous blinks are effectively synchronous; retain only a
+  // sub-perceptual offset so one eye never visibly closes before the other.
+  const t=((time%12)+12)%12,bt=t-side*.004;
   const s={x:0,y:0,pupil:1,close:0,top:-17,bottom:377,tilt:0,arc:0,lowerArc:0,t,mode,side};
   [s.x,s.y]=gaze(t,[[0,0,0],[1,0,0],[3,24,-13],[5,-29,8],[7,-10,-12],[9.3,19,1],[11.1,0,0],[12,0,0]]);
   for(const at of [2.15,6.4,6.86,10.7])s.close=Math.max(s.close,blink(bt,at,at===6.86?.8:1));
@@ -103,8 +147,10 @@
   }else if(mode==='playful'){
    s.bottom=289;s.lowerArc=-13;s.x=23*Math.sin(t*TAU/6);s.y=-8;s.close=Math.max(blink(bt,side?2.5:8.5,1,2),blink(bt,5.5));
   }
-  // Tiny phase-shifted offsets keep the pair alive even when the gaze is still.
-  s.pupil+=.017*Math.sin(t*TAU/4)+.008*Math.sin(t*TAU/2+side*.8);
+  // Keep both eyes largely yoked, with just enough individual variation for a
+  // natural fixation instead of a perfectly synchronized animation loop.
+  const living=livingPupil(t,side);
+  s.pupilOffset=[living.x,living.y];s.pupil+=.017*Math.sin(t*TAU/4)+.008*Math.sin(t*TAU/2+side*.8)+living.scale;
   s.x+=.65*Math.sin(t*TAU/6+side*.35);s.y+=1.3*Math.sin(t*TAU/3)-(mode.startsWith('forest')?0:s.close*5);
   return s;
  }
@@ -117,59 +163,70 @@
   // The pupil sits deeper and eases toward the iris center, strengthening
   // parallax without the pasted-on feel of a flat translation.
   const depthEase=.84+.08*cx;
-  const pupil={x:180+87*sx*depthEase,y:182+82*sy*depthEase};
+  const pupilOffset=s.pupilOffset||[0,0];
+  const pupil={x:180+87*sx*depthEase+pupilOffset[0],y:182+82*sy*depthEase+pupilOffset[1]};
   let hx=(46-(ix-180)*.76)/cx,hy=(-68-(iy-182)*.78)/cy;
   const len=Math.hypot(hx,hy),limit=84;if(len>limit){hx*=limit/len;hy*=limit/len}
   return {yaw,pitch,iris:{x:ix,y:iy},pupil,glint:{x:ix+hx*cx-hy*sx*sy,y:iy+hy*cy},
    matrix:[cx,0,-sx*sy,cy],squeeze:cx*cy};
  }
  function plane(c,o,center){c.translate(center.x,center.y);c.transform(o.matrix[0]*.96,o.matrix[1],o.matrix[2],o.matrix[3]*1.035,0,0)}
- function iris(c,s,color){
-  const R=114,[h,h2]=palettes[color]||palettes.aqua,o=optics(s),lag=s.lag||[0,0];
+  function pupilPath(c,x,y,r,style,oval=1){
+   c.beginPath();
+   const shape=clamp(oval,.65,1.4);
+   if(style==='slit')c.ellipse(x,y,r*.3*shape,r*1.04,0,0,TAU);
+   else if(style==='oval')c.ellipse(x,y,r*.72*shape,r*.96,0,0,TAU);
+   else c.ellipse(x,y,r*shape,r,0,0,TAU);
+  }
+  function iris(c,s,color){
+  const R=114,[h,h2]=palettes[color]||palettes.aqua,palette=paletteColors[color]||paletteColors.aqua,top=parseColor(s.colorTop,paletteColors[color]?.top||paletteColors.aqua.top),bottom=parseColor(s.colorBottom,paletteColors[color]?.bottom||paletteColors.aqua.bottom),o=optics(s),lag=s.lag||[0,0],irisScale=clamp(s.irisSize||1,.7,1.2),irisOval=clamp(s.irisOval||1,.68,1.32),pupilOval=clamp(s.pupilOval||1,.65,1.4),textureFlow=clamp(s.textureFlow??1),highlightMotion=clamp(s.highlightMotion??1),textureGain=clamp(s.texture??1),shine=clamp(s.shine??1),pattern=s.pattern||'silk';
+   c.save();c.translate(o.iris.x,o.iris.y);c.scale(irisScale,irisScale*irisOval);c.translate(-o.iris.x,-o.iris.y);
   const px=(o.pupil.x-o.iris.x)/o.matrix[0],py=(o.pupil.y-o.iris.y)/o.matrix[3];
   // Narrow contact shadow follows the rotated rim, never an untranslated round disk.
   c.save();plane(c,o,{x:o.iris.x-2*Math.sin(o.yaw),y:o.iris.y+3});
   disk(c,0,0,120,radial(c,0,0,120,[[0,'#153e5058'],[.94,'#153e5058'],[1,'#153e5000']]));c.restore();
-  c.save();plane(c,o,o.iris);
-  c.drawImage(texture(color),-R*1.026,-R*1.026,R*2.052,R*2.052);
+   c.save();plane(c,o,o.iris);
+   c.globalAlpha=.28+.72*textureGain;c.drawImage(texture(color),-R*1.026,-R*1.026,R*2.052,R*2.052);c.globalAlpha=1;
+   c.globalCompositeOperation='soft-light';c.globalAlpha=.42;
+   const tint=c.createLinearGradient(0,-R,0,R);tint.addColorStop(0,colorCss(colorShade(top,.32)));tint.addColorStop(.48,colorCss(colorMix(top,bottom,.42)));tint.addColorStop(1,colorCss(colorShade(bottom,.18)));c.fillStyle=tint;c.fillRect(-R,-R,R*2,R*2);c.globalCompositeOperation='source-over';c.globalAlpha=1;
   c.beginPath();c.arc(0,0,R,0,TAU);c.clip();
   // Iris bowl shading changes sides when the gaze turns. This is independent of texture.
   const rim=c.createLinearGradient(-114,0,114,0);
   rim.addColorStop(0,`rgba(0,15,40,${.06+Math.max(0,o.yaw)*.4})`);
   rim.addColorStop(.48,'#00152700');rim.addColorStop(1,`rgba(0,15,40,${.06+Math.max(0,-o.yaw)*.4})`);
   disk(c,0,0,R,rim);
-  const p=74*s.pupil;
+   const p=74*s.pupil*(s.pupilSize||1),pupilStyle=s.pupilStyle||'round';
   // Recessed pupil and translucent inner lip have their own center.
-  disk(c,px,py,p+9,radial(c,px,py,p+9,[[0,'#001728'],[.82,'#00293ddd'],[1,'#00495e00']]));
-  disk(c,px,py,p,radial(c,px-16,py-32,p*1.8,[[0,'#001426'],[.43,'#02283e'],[.8,'#07516b'],[1,`hsl(${h} 86% 32%)`]]));
-  c.save();c.beginPath();c.arc(px,py,p,0,TAU);c.clip();
+   pupilPath(c,px,py,p+9,pupilStyle,pupilOval);c.fillStyle=radial(c,px,py,p+9,[[0,'#001728'],[.82,'#00293ddd'],[1,'#00495e00']]);c.fill();
+   pupilPath(c,px,py,p,pupilStyle,pupilOval);c.fillStyle=radial(c,px-16,py-32,p*1.8,[[0,'#001426'],[.43,'#02283e'],[.8,'#07516b'],[1,`hsl(${h} 86% 32%)`]]);c.fill();
+   c.save();pupilPath(c,px,py,p,pupilStyle,pupilOval);c.clip();
   for(let i=0;i<6;i++){
-   const depth=.35+i*.16,xx=px-Math.sin(o.yaw)*20*depth+Math.sin(i*2.9+s.t*TAU/12)*20+lag[0]*depth*.18;
-   const yy=py-Math.sin(o.pitch)*17*depth-40+i*16+lag[1]*depth*.18;
-   c.save();c.translate(xx,yy);c.rotate(i*.9+.2*Math.sin(s.t*TAU/6));c.scale(1.1,.65);
+    const depth=.35+i*.16,xx=px-Math.sin(o.yaw)*20*depth+Math.sin(i*2.9+s.t*TAU/12*textureFlow)*20+lag[0]*depth*.18;
+    const yy=py-Math.sin(o.pitch)*17*depth-40+i*16+lag[1]*depth*.18;
+    c.save();c.translate(xx,yy);c.rotate(i*.9+.2*Math.sin(s.t*TAU/6*textureFlow));c.scale(1.1,.65);
    disk(c,0,0,43,radial(c,0,0,43,[[0,`hsla(${h2},88%,${i%2?12:57}%,.21)`],[1,'transparent']]));c.restore();
   }
   // A restrained deep caustic follows refraction, not the painted iris.
   c.save();c.translate(px-Math.sin(o.yaw)*17+lag[0]*.12,py+49-Math.sin(o.pitch)*14);c.scale(1,.38);
   disk(c,0,0,43,radial(c,0,0,43,[[0,'#81e9ec45'],[.5,'#4fd6e321'],[1,'#4fd6e300']]));c.restore();
   c.restore();
-  c.lineCap='round';c.strokeStyle=`hsla(${h},90%,80%,.38)`;c.lineWidth=2;
-  c.beginPath();c.arc(px,py,p+4,.18*Math.PI,.8*Math.PI);c.stroke();
+   c.lineCap='round';c.strokeStyle=colorCss(colorMix(top,bottom,.55),.48);c.lineWidth=2;
+   pupilPath(c,px,py,p+4,pupilStyle,pupilOval);c.stroke();
   c.strokeStyle=`hsla(${h},90%,78%,.42)`;c.lineWidth=3;
   c.beginPath();c.arc(-Math.sin(o.yaw)*7,-Math.sin(o.pitch)*6,103,.2*Math.PI,.78*Math.PI);c.stroke();
   if(s.mode==='superhappy')for(const [a,b,col]of [[-.73,.16,'#ee6fd4aa'],[2.67,3.48,'#61e8bca6']]){
    c.strokeStyle=col;c.lineWidth=7;c.beginPath();c.arc(0,0,111,a,b);c.stroke();
   }
   const beads=[[-84,-46,3.4],[-68,-73,2.6],[-36,-95,2.8],[5,-103,2.5],[84,-26,3.5],[92,8,2.8],[82,47,4],[56,78,3.4],[-65,76,2.8],[-91,26,2.4]];
-  for(let i=0;i<beads.length;i++){const [xx,yy,r]=beads[i],a=.16+.08*Math.sin(s.t*TAU/3+i);disk(c,xx,yy,r*.75,`rgba(215,255,255,${a})`)}
-  c.restore();
+  for(let i=0;i<beads.length;i++){const [xx,yy,r]=beads[i],a=.16+.08*Math.sin(s.t*TAU/3+i);disk(c,xx,yy,r*.75,colorCss(colorMix(bottom,[255,255,255],.42),a))}
+   c.restore();
   // Front cornea stays rounder than the iris. Lighting uses screen coordinates,
   // so highlights slide across the lens while the deeper eye rotates underneath.
   c.save();c.save();plane(c,o,o.iris);c.beginPath();c.arc(0,0,114,0,TAU);c.restore();c.clip();
-  const hx=o.glint.x+lag[0]*.1,hy=o.glint.y+lag[1]*.1,lightAngle=.27-o.yaw*.25;
+   const hx=o.glint.x+lag[0]*.1+highlightMotion*2.6*Math.sin(s.t*.43),hy=o.glint.y+lag[1]*.1+highlightMotion*2.2*Math.sin(s.t*.37+1.1),lightAngle=.27-o.yaw*.25;
   // Broad reflected light, a luminous center, and a feathered boundary form
   // one curved reflection rather than three opaque white decals.
-  c.save();c.globalAlpha=.96+.04*Math.sin(s.t*TAU/4);
+   c.save();c.globalAlpha=(.96+.04*Math.sin(s.t*TAU/4))*shine;
   softLight(c,hx-3,hy+3,32,42,lightAngle,[[0,'#dfffff55'],[.5,'#c4f5ff20'],[1,'#a6e8ff00']]);
   softLight(c,hx,hy,18,24,lightAngle,[[0,'#fffffff5'],[.36,'#f7ffffec'],[.64,'#dcffff9c'],[.86,'#c5efff35'],[1,'#b8eaff00']]);
   softLight(c,hx+20,hy+17,8,12,lightAngle-.4,[[0,'#faffffcc'],[.35,'#e1ffff99'],[.76,'#c8f5ff30'],[1,'#b8eaff00']]);
@@ -182,9 +239,11 @@
   disk(c,0,0,50,radial(c,0,0,50,[[0,'#9cfaff47'],[.6,'#61dcf718'],[1,'transparent']]));c.restore();
   c.lineWidth=2.1;c.lineCap='round';c.strokeStyle='#b1f9ff62';c.beginPath();
   c.ellipse(180+(o.iris.x-180)*.72,183+(o.iris.y-182)*.64,105,111,0,.27*Math.PI,.73*Math.PI);c.stroke();
-  c.restore();
-  return o;
- }
+   if(pattern==='ripple'){c.globalAlpha=.12*textureGain;c.lineWidth=2;c.strokeStyle=`hsla(${h},90%,86%,.55)`;c.beginPath();c.ellipse(o.iris.x,o.iris.y+16,72,28,0,.15*Math.PI,.85*Math.PI);c.stroke()}
+   else if(pattern==='crystal'){c.globalAlpha=.18*textureGain;c.fillStyle='#ffffff';for(const [dx,dy,r] of [[-42,-35,2],[38,-26,1.5],[49,24,2],[-31,46,1.4]]){c.beginPath();c.arc(o.iris.x+dx,o.iris.y+dy,r,0,TAU);c.fill()}}
+   c.restore();
+   return o;
+  }
  function heart(c,x,y,t){
   const k=1+.045*Math.sin(t*TAU/1.5);c.save();c.translate(x,y);c.scale(k,k);
   const path=()=>{c.beginPath();c.moveTo(0,113);c.bezierCurveTo(-22,109,-126,45,-123,-32);c.bezierCurveTo(-122,-101,-49,-118,0,-65);c.bezierCurveTo(52,-117,124,-98,123,-32);c.bezierCurveTo(123,38,31,106,0,113);c.closePath()};
@@ -307,14 +366,20 @@
   forestWing(c,p=>{p.moveTo(-1,5);p.bezierCurveTo(-24,18,-35,40,-22,58);p.bezierCurveTo(-8,78,15,70,25,48);p.bezierCurveTo(32,31,23,16,7,7)},ctx=>{const g=ctx.createLinearGradient(0,3,1,69);g.addColorStop(0,'#dcff47');g.addColorStop(.56,'#f2ff9a');g.addColorStop(1,'#fff');return g},ctx=>ctx.scale(1,.94+.06*flap),'#eaff87');
   c.save();c.shadowColor='#e7ff5d';c.shadowBlur=16;ellipse(c,1,8,9,16,radial(c,-2,0,20,[[0,'#f3ff79'],[.68,'#dfff45'],[1,'#efffb8']]),-.1);c.restore();c.restore();
  }
+ function forestAmbient(c,s){
+  if(!s.ambient)return;
+  const t=Number.isFinite(s.t)?s.t:0,amount=.42+.24*Math.sin(t*.42);
+  c.save();c.globalCompositeOperation='screen';c.globalAlpha=amount;softLight(c,176+Math.sin(t*.38)*13,288+Math.cos(t*.31)*7,152,42,0,[[0,'#dffff442'],[.6,'#92ffc51d'],[1,'transparent']]);c.restore();
+ }
  function forestEye(c,s){
   if(!forestFiles.every(name=>forestAssets[name].complete&&forestAssets[name].naturalWidth)){forestFallback(c,s);return}
-  const motion=s.forestMotion||1,wind=(Math.sin(s.t*TAU/3)+.3*Math.sin(s.t*TAU/1.5+s.side*.7))*motion,px=s.x,py=s.y;
-  const tremorX=s.forestTremorX||0,tremorY=s.forestTremorY||0,breath=1+.018*Math.sin(s.t*TAU/4+s.side*.28),expressionScale=(s.forestScale||1)*breath,coreX=182+px*.18+tremorX,coreY=185+py*.14+tremorY,coreScale=(1-Math.abs(px)/1250)*expressionScale;
+  const motion=s.forestMotion||1,flow=.45+.95*clamp(s.textureFlow??.5),wind=(Math.sin(s.t*TAU/3*flow)+.3*Math.sin(s.t*TAU/1.5*flow+s.side*.7))*motion,px=s.x,py=s.y;
+  const tremorX=(s.forestTremorX||0),tremorY=(s.forestTremorY||0),breath=1+.018*Math.sin(s.t*TAU/4+s.side*.28),expressionScale=(s.forestScale||1)*breath,irisScale=clamp(s.irisSize??1,.7,1.2),irisOval=clamp(s.irisOval??1,.68,1.32),coreX=182+px*.18+tremorX,coreY=185+py*.14+tremorY,coreScale=(1-Math.abs(px)/1250)*expressionScale*irisScale,coreYScale=expressionScale*irisScale*irisOval;
   c.drawImage(forestAssets.backdrop,0,0,360,360);
-  c.save();c.beginPath();c.ellipse(coreX,coreY,114*coreScale,114*expressionScale,0,0,TAU);c.clip();c.translate(tremorX,tremorY);
+  c.save();c.beginPath();c.ellipse(coreX,coreY,114*coreScale,114*coreYScale,0,0,TAU);c.clip();c.translate(tremorX,tremorY);
   c.save();c.translate(px*.035,py*.03);
-  const dark=c.createRadialGradient(151,145,5,182,185,116);dark.addColorStop(0,'#06343c');dark.addColorStop(.48,'#001827');dark.addColorStop(.82,'#00131f');dark.addColorStop(.93,'#062a2ad9');dark.addColorStop(1,'#0c56521c');disk(c,182,185,116,dark);
+  const pupilAmount=clamp(s.pupilSize??1,.55,1.45),darkSpread=clamp(.48+(pupilAmount-1)*.1,.42,.54);
+  const dark=c.createRadialGradient(151,145,5,182,185,116);dark.addColorStop(0,'#06343c');dark.addColorStop(darkSpread,'#001827');dark.addColorStop(.82,'#00131f');dark.addColorStop(.93,'#062a2ad9');dark.addColorStop(1,'#0c56521c');disk(c,182,185,116,dark);
   softLight(c,158,268,112,52,-.08,[[0,'#b6dc7350'],[.55,'#6c9d4c18'],[1,'transparent']]);
   c.lineCap='round';
   c.strokeStyle='#1e687078';c.lineWidth=6;c.beginPath();c.moveTo(180,299);c.bezierCurveTo(177,247,151,177,111,132);c.stroke();
@@ -333,23 +398,27 @@
   c.save();c.translate(px*.2,py*.16);forestVectorFlower(c,66,162,wind);c.restore();
   const flap=Math.sin(s.t*TAU*(.32+.1*motion)+s.side*.18)**2;
   forestVectorButterfly(c,227+px*.31,113+py*.25,flap,Math.sin(s.t*TAU/6+s.side*.4)*.7);
-  forestParticles(c,s,1);
+  forestParticles(c,s,1);forestAmbient(c,s);
   c.save();c.globalCompositeOperation='screen';softLight(c,181-px*.04,296-py*.03,150,38,0,[[0,'#f4ffcb30'],[.6,'#baff9720'],[1,'transparent']]);c.restore();
   c.restore();
-  c.save();c.beginPath();c.arc(180,180,176,0,TAU);c.clip();c.strokeStyle='#ffffff42';c.lineWidth=2.4;c.lineCap='round';c.beginPath();c.arc(181,181,165,2.44,3.77);c.stroke();c.restore();
+  c.save();c.beginPath();c.arc(180,180,176,0,TAU);c.clip();c.globalAlpha=.18+.30*s.rim;c.strokeStyle='#d9fff842';c.lineWidth=1.15+s.rim*2.5;c.lineCap='round';c.beginPath();c.arc(181,181,165,2.44,3.77);c.stroke();c.restore();
  }
  function forestLids(c,s){
-  const close=smooth(clamp(s.close));if(close<.002)return;
-  const lowerProgress=Math.pow(close,1.28),top=-18+close*208,bottom=378-lowerProgress*188;
-  const arch=30*(1-close)+3,tilt=Math.sin(s.t*TAU/6+s.side*.65)*2.2*(1-close);
-  const upperEdge=()=>{c.beginPath();c.moveTo(-14,top+tilt);c.bezierCurveTo(76,top+arch*1.1,132,top+arch*1.7,180,top+arch*1.55);c.bezierCurveTo(232,top+arch*1.4,289,top+arch*.62,374,top-tilt)};
-  const lowerEdge=()=>{c.beginPath();c.moveTo(-14,bottom-tilt*.3);c.bezierCurveTo(76,bottom-arch*.35,132,bottom-arch*.65,180,bottom-arch*.72);c.bezierCurveTo(235,bottom-arch*.68,292,bottom-arch*.28,374,bottom+tilt*.3)};
-  const upper=c.createLinearGradient(0,10,0,top+arch);upper.addColorStop(0,'#020f19');upper.addColorStop(.68,'#07232f');upper.addColorStop(1,'#17454c');
-  c.save();c.shadowColor='#001018';c.shadowBlur=13;c.shadowOffsetY=5;c.fillStyle=upper;c.beginPath();c.moveTo(-14,-14);c.lineTo(374,-14);c.lineTo(374,top-tilt);c.bezierCurveTo(289,top+arch*.62,232,top+arch*1.4,180,top+arch*1.55);c.bezierCurveTo(132,top+arch*1.7,76,top+arch*1.1,-14,top+tilt);c.closePath();c.fill();c.restore();
-  const lower=c.createLinearGradient(0,bottom-arch,0,374);lower.addColorStop(0,'#17434a');lower.addColorStop(.26,'#082630');lower.addColorStop(1,'#020e18');
-  c.save();c.shadowColor='#001018';c.shadowBlur=9;c.shadowOffsetY=-3;c.fillStyle=lower;c.beginPath();c.moveTo(-14,374);c.lineTo(374,374);c.lineTo(374,bottom+tilt*.3);c.bezierCurveTo(292,bottom-arch*.28,235,bottom-arch*.68,180,bottom-arch*.72);c.bezierCurveTo(132,bottom-arch*.65,76,bottom-arch*.35,-14,bottom-tilt*.3);c.closePath();c.fill();c.restore();
-  c.save();c.globalAlpha=.16+.24*close;c.lineCap='round';c.lineWidth=1.5;c.strokeStyle='#78a6a3';upperEdge();c.stroke();c.globalAlpha*=.65;lowerEdge();c.stroke();c.restore();
-  if(close>.86){const contact=smooth((close-.86)/.14);c.save();c.globalAlpha=contact;c.strokeStyle='#2d626488';c.lineWidth=2;c.shadowColor='#4b8582';c.shadowBlur=7;c.beginPath();c.moveTo(22,189);c.bezierCurveTo(112,193,246,193,338,188);c.stroke();c.restore()}
+  const rawClose=Number(s.close),close=Number.isFinite(rawClose)?smooth(clamp(rawClose)):0,upperManual=clamp(s.upperLid??0),lowerManual=clamp(s.lowerLid??0),tilt=clamp(s.eyeTilt??0,-12,12)*.85;
+  // At rest the lid is only a soft inset shadow at the top rim. During a blink
+  // that same upper lid travels to the bottom; no lower lid meets it halfway.
+  const restTop=34+upperManual*185,top=mix(restTop,392,close),arch=mix(12,5,close),lower=288-lowerManual*82;
+  c.save();c.beginPath();c.arc(180,180,177,0,TAU);c.clip();
+  if(close<=.01){
+   const cap=c.createLinearGradient(0,-14,0,restTop+arch*2+2);cap.addColorStop(0,'#020f19a6');cap.addColorStop(.46,'#06263245');cap.addColorStop(.78,'#17454c00');cap.addColorStop(1,'transparent');
+   c.fillStyle=cap;c.beginPath();c.moveTo(-14,-14);c.lineTo(374,-14);c.lineTo(374,restTop+tilt);c.quadraticCurveTo(180,restTop+arch*2,-14,restTop-tilt);c.closePath();c.fill();
+  }else{
+   const reveal=smooth(clamp((close-.002)/.05)),upper=c.createLinearGradient(0,-10,0,Math.min(388,top+arch));upper.addColorStop(0,'#020f19');upper.addColorStop(.66,'#07232f');upper.addColorStop(1,'#17454c');
+   c.save();c.globalAlpha=reveal;c.shadowColor='#001018';c.shadowBlur=13;c.shadowOffsetY=5;c.fillStyle=upper;c.beginPath();c.moveTo(-14,-14);c.lineTo(374,-14);c.lineTo(374,top+tilt);c.quadraticCurveTo(180,top+arch*2,-14,top-tilt);c.closePath();c.fill();c.restore();
+   if(close<.94){const edgeAlpha=reveal*smooth(clamp((.94-close)/.14));c.save();c.globalAlpha=(.38+.18*close)*edgeAlpha;c.lineCap='round';c.lineWidth=5;c.strokeStyle='#021321a8';c.shadowColor='#000814';c.shadowBlur=4;c.beginPath();c.moveTo(-8,top-tilt);c.quadraticCurveTo(180,top+arch*2,368,top+tilt);c.stroke();c.globalAlpha=.28*edgeAlpha;c.strokeStyle='#4b927f';c.lineWidth=1.2;c.shadowBlur=0;c.beginPath();c.moveTo(-7,top-tilt-2);c.quadraticCurveTo(180,top+arch*2-2,367,top+tilt-2);c.stroke();c.restore()}
+  }
+  if(lowerManual>.01){c.save();c.globalAlpha=.2+.3*lowerManual;c.lineCap='round';c.strokeStyle='#2c766f';c.lineWidth=4;c.beginPath();c.moveTo(6,lower);c.quadraticCurveTo(180,lower-18,354,lower);c.stroke();c.strokeStyle='#8bd5c0';c.globalAlpha*=.55;c.lineWidth=1;c.beginPath();c.moveTo(9,lower+2);c.quadraticCurveTo(180,lower-14,351,lower+2);c.stroke();c.restore()}
+  c.restore();
  }
  function lidPath(c,y,tilt,arc,upper){
   c.beginPath();c.moveTo(-12,upper?-12:372);c.lineTo(372,upper?-12:372);c.lineTo(372,y+tilt);c.quadraticCurveTo(180,y+arc*2,-12,y-tilt);c.closePath();
@@ -388,24 +457,82 @@
   if(upper){c.globalAlpha=.55*(1-close*.65);c.strokeStyle='#374c5038';c.lineWidth=1.3;lidEdge(c,y-18,tilt*.85,arc*.87);c.stroke()}
   c.restore();
  }
+ function glassBlink(c,s,amount){
+  const o=optics(s),R=114;
+  // At rest this is a recessed U-shaped groove, not a dark flap sitting on
+  // top of the iris. Only a blink expands the groove into a cover.
+  const grooveY=-70+.8*Math.sin(s.t*TAU/5+s.side*.4),progress=smooth(clamp(amount));
+  const cover=mix(-R-12,R+12,progress);
+  c.save();plane(c,o,o.iris);c.beginPath();c.arc(0,0,R,0,TAU);c.clip();
+  if(amount>.001){
+   // The cover grows out of the upper recess and closes the circular display.
+   c.save();c.beginPath();c.moveTo(-R-2,-R-2);c.lineTo(R+2,-R-2);c.lineTo(R+2,cover);c.quadraticCurveTo(0,cover+23,-R-2,cover);c.closePath();
+   const dark=c.createLinearGradient(0,-R,0,R);dark.addColorStop(0,'#061322f2');dark.addColorStop(.66,'#0b2235eb');dark.addColorStop(1,'#123751e0');c.fillStyle=dark;c.fill();c.restore();
+  }
+  const edgeY=amount>.001?cover:grooveY,closing=Math.max(0,(amount-.04)/.96);
+  // Two close, curved strokes make the edge read as an inset channel with a
+  // shadowed lower wall, rather than a protruding eyelid.
+  c.globalAlpha=.72;c.strokeStyle=closing>.2?'#55e2d0':'#031633';c.lineWidth=10;c.shadowColor='#010816';c.shadowBlur=5;
+  c.beginPath();c.moveTo(-86,edgeY);c.quadraticCurveTo(0,edgeY+23,86,edgeY);c.stroke();
+  c.globalAlpha=.45+.2*closing;c.strokeStyle=closing>.2?'#8bfff1':'#31629a';c.lineWidth=1.8;c.shadowBlur=0;
+  c.beginPath();c.moveTo(-82,edgeY-3);c.quadraticCurveTo(0,edgeY+18,82,edgeY-3);c.stroke();
+  c.restore();
+ }
+ function shapePath(kind='circle',roundness=1){
+  const p=new Path2D(),raw=Number(roundness),r=clamp(raw>1?raw/100:raw,.35,1);
+  if(kind==='circle'||(kind==='custom'&&r>=.995)){p.arc(180,180,179.5,0,TAU);return p}
+  if(kind==='almond'){
+   p.moveTo(1,180);p.bezierCurveTo(58,102,112,71,180,74);p.bezierCurveTo(248,71,302,102,359,180);p.bezierCurveTo(302,258,248,289,180,286);p.bezierCurveTo(112,289,58,258,1,180);p.closePath();return p;
+  }
+  let rx=179.5,ry=179.5,shapeRound=r;
+  // Preserve each preset's character while allowing the whole roundness
+  // range to change its contour instead of flattening below a hard minimum.
+  if(kind==='softWide'){ry=148;shapeRound=.42+r*.58}
+  else if(kind==='softOval'){rx=151;shapeRound=.40+r*.60}
+  else if(kind==='shellGem'){ry=171;shapeRound=.34+r*.66}
+  const top=180-ry,bottom=180+ry,cx=rx*(.34+.47*shapeRound),cy=ry*(.16+.26*shapeRound);
+  p.moveTo(180,top);p.bezierCurveTo(180+cx,top,180+rx,180-cy,180+rx,180);p.bezierCurveTo(180+rx,180+cy,180+cx,bottom,180,bottom);p.bezierCurveTo(180-cx,bottom,180-rx,180+cy,180-rx,180);p.bezierCurveTo(180-rx,180-cy,180-cx,top,180,top);p.closePath();return p;
+ }
  function render(canvas,time,options={}){
-  const c=canvas.getContext('2d',{alpha:false}),s=state(time,options.mode,options.side||0);
-  const scriptedForest=['forest-look','forest-surprise','forest-sleepy','forest-tremor'].includes(s.mode);
-  if(options.gaze&&s.mode!=='cross'&&!scriptedForest){s.x=options.gaze[0];s.y=options.gaze[1]}
-  s.x=clamp(s.x,-66,66);s.y=clamp(s.y,-57,57);
+   const transparent=options.transparentBackground===true,c=canvas.getContext('2d',{alpha:transparent}),s=state(time,options.mode,options.side||0);
+  s.pupilSize=clamp(options.pupilSize??1,.55,1.45);s.pupilStyle=options.pupilStyle||'round';s.colorTop=options.colorTop;s.colorBottom=options.colorBottom;s.rim=clamp(options.rim??.33,.08,1.2);s.irisSize=clamp(options.irisSize??1,.7,1.2);s.irisOval=clamp(options.irisOval??1,.68,1.32);s.pupilOval=clamp(options.pupilOval??1,.65,1.4);s.texture=clamp(options.texture??1);s.shine=clamp(options.shine??1,0,1.2);s.pattern=options.pattern||'silk';s.highlightMotion=clamp(options.highlightMotion??0);s.textureFlow=clamp(options.textureFlow??0);s.ambient=options.ambient!==false;s.upperLid=clamp((Number(options.upperLid)||0)/70);s.lowerLid=clamp((Number(options.lowerLid)||0)/55);s.eyeTilt=clamp(Number(options.eyeTilt)||0,-12,12);
+   const eyePulse=clamp(options.eyePulse??0,0,1),pulse=1+eyePulse*(.018*Math.sin(time*.76+(options.side||0)*.12)+.007*Math.sin(time*.31+1.2));
+   const eyeSize=clamp(options.eyeSize??1,.72,1.25)*pulse;
+   const eyeWidth=clamp((options.eyeWidth??1)*eyeSize,.55,1.35),eyeHeight=clamp((options.eyeHeight??1)*eyeSize,.55,1.35);
+   const scriptedForest=['forest-look','forest-surprise','forest-sleepy','forest-tremor'].includes(s.mode);
+   if(options.gaze&&s.mode!=='cross'&&!scriptedForest){s.x=options.gaze[0];s.y=options.gaze[1]}
+   else if(options.autoGaze===false){s.x=(Number(options.gazeX)||0)*.66;s.y=(Number(options.gazeY)||0)*.57}
+   else{s.x+=(Number(options.gazeX)||0)*.14;s.y+=(Number(options.gazeY)||0)*.12}
+   s.tilt+=(Number(options.eyeTilt)||0);
+   s.top+=(Number(options.upperLid)||0)*1.35;
+   s.bottom-=(Number(options.lowerLid)||0)*.82;
+   // Zero disables micro-saccades; the full range stays subtle and irregular.
+   s.pupilOffset=(s.pupilOffset||[0,0]).map(v=>v*1.9*clamp(options.micro??1,0,1));
+   s.pupil*=1+clamp(options.pupilPulse??0,0,1)*(.020*Math.sin(time*1.37+(options.side||0)*.4)+.008*Math.sin(time*2.71+1.1));
+   const expression=clamp(options.expression??1);s.x*=.45+.55*expression;s.y*=.45+.55*expression;s.pupil=1+(s.pupil-1)*(.45+.55*expression);
+   if(options.autoBlink===false)s.close=0;
+   else if(options.blinkEvery!=null)s.close=Math.max((s.mode==='sleepy'?s.close:0),scheduledBlink(time,options.blinkEvery,(options.side||0)*(Number(options.blinkOffset)||0)*.035,options.blinkDepth??1));
+   s.x=clamp(s.x,-66,66);s.y=clamp(s.y,-57,57);
   const before=state(time-.07,options.mode,options.side||0);
   s.lag=options.lag||(options.gaze?[0,0]:[clamp(before.x-s.x,-14,14),clamp(before.y-s.y,-14,14)]);
   s.pupil+=clamp(options.attention||0)*.045;
   if(options.blink!=null)s.close=Math.max(s.close,options.blink);
-  c.setTransform(canvas.width/360,0,0,canvas.height/360,0,0);c.fillStyle='#000';c.fillRect(0,0,360,360);c.save();c.beginPath();c.arc(180,180,179.5,0,TAU);c.clip();
+  c.setTransform(canvas.width/360,0,0,canvas.height/360,0,0);if(transparent)c.clearRect(0,0,360,360);else{c.fillStyle='#000';c.fillRect(0,0,360,360)}c.save();
+  // Shape controls transform every eye layer together, rather than cropping a
+  // fixed-size iris inside a smaller sclera.
+  c.translate(180,180);c.rotate(s.eyeTilt*Math.PI/180);c.scale(eyeWidth,eyeHeight);c.translate(-180,-180);c.clip(shapePath(options.shapePreset||'circle',options.roundness??1));
   if(s.mode.startsWith('forest')){
    forestEye(c,s);forestLids(c,s);c.restore();c.setTransform(1,0,0,1,0,0);return s;
   }
   // Neutral white sclera with subtle edge shading, no blue surround or robot shell.
   disk(c,180,180,180,radial(c,176,175,204,[[0,'#fff'],[.61,'#fdfdfc'],[.79,'#f3f4f3'],[.92,'#d9dddc'],[1,'#a2abaa']]));
+  // This edge is drawn inside the silhouette, so "柔和边缘" changes the real
+  // eye boundary rather than adding a detached ring around the display.
+  c.save();c.globalAlpha=.18+.16*s.rim;c.lineWidth=1.2+s.rim*2.6;c.strokeStyle='#5f71706b';c.stroke(shapePath(options.shapePreset||'circle',options.roundness??1));c.restore();
   const projection=optics(s),x=projection.iris.x,y=projection.iris.y;
   if(s.mode==='heart')heart(c,x,y-1,s.t);
   else{
+   s.irisSize=options.irisSize??1;s.irisOval=options.irisOval??1;s.pupilOval=options.pupilOval??1;s.texture=options.texture??1;s.shine=options.shine??1;s.pattern=options.pattern||'silk';s.highlightMotion=options.highlightMotion??0;s.textureFlow=options.textureFlow??0;s.ambient=options.ambient!==false;
    iris(c,s,options.color||'aqua');
    if(s.mode==='angry')flame(c,x+5,y+67,s.t);
    if(s.mode==='hot'){
@@ -415,15 +542,23 @@
    if(s.mode==='cry')tears(c,s);
   }
   // Soft cast shadows ground the curved lids in the globe instead of a flat mask.
-  const b=clamp(s.close),smiling=s.mode==='happy',seam=smiling?202+3*Math.sin(s.t*TAU/3):204;
-  const lidFollow=clamp(s.y*.1,-4,4);
-  const top=mix(s.top+lidFollow,seam,b),bottom=mix(s.bottom+lidFollow*.5,seam,b),tilt=s.tilt*(1-b);
-  const smileArc=smiling?30+3*Math.sin(s.t*TAU/3):8;
-  const arc=mix(s.arc,-smileArc,b),lowerArc=mix(s.lowerArc,-smileArc,b);
+  const b=clamp(s.close),smiling=s.mode==='happy',screenBlink=['idle','curious','surprise','playful'].includes(s.mode);
+  if(screenBlink)glassBlink(c,s,b);
+  if(!screenBlink){
+  const lidFollow=clamp(s.y*.1,-4,4),restBottom=s.bottom+lidFollow*.5;
+  // Human and most mammal blinks are upper-lid led. The lower lid tenses and
+  // rises only near closure, so the two edges never descend as parallel bars.
+  const upperProgress=1-Math.pow(1-b,.72),lowerProgress=Math.pow(b,1.7);
+  const top=mix(s.top+lidFollow,restBottom-3,upperProgress),bottom=mix(restBottom,restBottom-23,lowerProgress),tilt=s.tilt*(1-b);
+  const smileArc=smiling?-30+3*Math.sin(s.t*TAU/3):14;
+  // During closure the upper edge bows downward over the cornea; the lower
+  // lid makes only a shallow counter-curve as it tenses upward.
+  const arc=mix(s.arc,smileArc,b),lowerArc=mix(s.lowerArc,-7,b);
   paintLid(c,top,tilt,arc,true,b);paintLid(c,bottom,0,lowerArc,false,b);
   c.lineCap='round';c.lineWidth=1.35;c.strokeStyle='#233a3f88';
   c.beginPath();c.moveTo(-12,top-tilt);c.quadraticCurveTo(180,top+arc*2,372,top+tilt);c.stroke();
   if(b<.995){c.beginPath();c.moveTo(-12,bottom);c.quadraticCurveTo(180,bottom+lowerArc*2,372,bottom);c.stroke()}
+  }
   if(s.mode==='superhappy')confetti(c,s);
   disk(c,180,180,180,radial(c,180,180,180,[[0,'#0000'],[.965,'#0000'],[1,'#23302e50']]));
   c.restore();c.setTransform(1,0,0,1,0,0);return s;
